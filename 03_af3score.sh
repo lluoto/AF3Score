@@ -13,19 +13,6 @@ flash_attention="${AF3_FLASH_ATTENTION_IMPLEMENTATION:-xla}"
 num_samples="${AF3_NUM_SAMPLES:-1}"
 init_guess="${AF3_INIT_GUESS:-True}"
 
-if [[ -n "${CUDA_BIN:-}" ]]; then
-  export PATH="${CUDA_BIN}:$PATH"
-fi
-if [[ -n "${CUDA_LIB:-}" ]]; then
-  export LD_LIBRARY_PATH="${CUDA_LIB}:${LD_LIBRARY_PATH:-}"
-fi
-if [[ -n "${HMMER_BIN:-}" ]]; then
-  export PATH="${HMMER_BIN}:$PATH"
-fi
-export XLA_FLAGS="${XLA_FLAGS:---xla_gpu_enable_triton_gemm=true}"
-export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-true}"
-export XLA_CLIENT_MEM_FRACTION="${XLA_CLIENT_MEM_FRACTION:-0.95}"
-
 buckets=$(basename "$batch_json_dir" | grep -oE '[0-9]+$' || true)
 if [[ -z "$buckets" ]]; then
   buckets=3072

@@ -1,107 +1,106 @@
 # AF3Score Pipeline
 
-A pipeline for evaluating protein structure quality using AF3Score.
+A portability-focused AF3Score workflow that can run either locally or through Slurm.
 
 ## Environment Setup
 
-### 1. Create and Activate Conda Environment
+### 1. Create and Activate a Conda Environment
 ```bash
 conda create -n af3score python=3.11
 conda activate af3score
 conda install gxx_linux-64 gxx_impl_linux-64 gcc_linux-64 gcc_impl_linux-64=13.2.0
 ```
 
-
 ### 2. Install AF3Score and Dependencies
 ```bash
 git clone https://github.com/Mingchenchen/AF3Score.git
-cd AF3Score/
-
-# Install Python dependencies
+cd AF3Score
 pip install -r dev-requirements.txt
 pip install --no-deps -e .
 build_data
-
-# Install additional dependencies
 conda install -c conda-forge biopython h5py pandas
 ```
 
+## Pipeline Modes
 
-### 3. (Optional) MSA Generation Setup
-Download Databases:
+`AF3score_pipeline.sh` supports two execution modes:
+
+- `AF3SCORE_MODE=local`: run `prepare_jax` and AF3Score directly on the current node.
+- `AF3SCORE_MODE=slurm`: submit `prepare_jax` and AF3Score with `sbatch` and wait for completion.
+
+## Required Runtime Variables
+
+Set these before running the pipeline:
+
 ```bash
-bash fetch_databases.sh <DB_DIR>  # Replace <DB_DIR> with your database directory
+export PYTHON_EXEC=~/.conda/envs/afscore/bin/python
+export AF3_MODEL_DIR=/path/to/deepmind_af3_params
 ```
 
-Install HMMER:
+Optional variables:
+
 ```bash
-mkdir ~/hmmer_build ~/hmmer
-wget http://eddylab.org/software/hmmer/hmmer-3.4.tar.gz -P ~/hmmer_build
-cd ~/hmmer_build
-tar -zxf hmmer-3.4.tar.gz
-cd hmmer-3.4
-./configure --prefix=~/hmmer
-make -j8
-make install
+export AF3_DB_DIR=/path/to/af3_databases
+export AF3_FLASH_ATTENTION_IMPLEMENTATION=xla
+export PREP_NUM_WORKERS=12
+export METRICS_NUM_WORKERS=16
 ```
 
-Add HMMER to your PATH:
+## Local Usage
+
 ```bash
-export PATH="~/hmmer/bin:$PATH"
+AF3SCORE_MODE=local PYTHON_EXEC=~/.conda/envs/afscore/bin/python AF3_MODEL_DIR=/path/to/deepmind_af3_params ./AF3score_pipeline.sh <input_pdb_dir> <output_dir> <batch_size>
 ```
 
-Verify installation:
+## Slurm Usage
+
 ```bash
-hmmsearch -h
+AF3SCORE_MODE=slurm PYTHON_EXEC=~/.conda/envs/afscore/bin/python AF3_MODEL_DIR=/path/to/deepmind_af3_params SLURM_PARTITION=gpu SLURM_PREP_SBATCH_ARGS="--gres=gpu:1 --cpus-per-task=12" SLURM_SCORE_SBATCH_ARGS="--gres=gpu:1 --cpus-per-task=8" ./AF3score_pipeline.sh <input_pdb_dir> <output_dir> <batch_size>
 ```
 
-## Usage Pipeline
+Use `SLURM_NODELIST` only if you need to pin jobs to specific nodes.
 
-The **AF3Score pipeline** is designed for high-throughput evaluation of protein structures. It consists of two primary scripts tailored for single-batch or multi-batch processing on high-performance computing (HPC) clusters.
+## Cluster Transferability Notes
 
-### 1. Main Pipeline Script
+Site-specific values should be injected with environment variables instead of editing the scripts.
 
-`AF3score_pipeline.sh` is the core utility used to process a single directory of PDB files.
+Main knobs:
 
-**Usage:**
+- `PYTHON_EXEC`
+- `AF3_MODEL_DIR`
+- `AF3_DB_DIR`
+- `AF3SCORE_MODE`
+- `SLURM_PARTITION`
+- `SLURM_NODELIST`
+- `SLURM_PREP_SBATCH_ARGS`
+- `SLURM_SCORE_SBATCH_ARGS`
 
-Before running the pipeline on a shell cluster, you must configure the variables within `AF3score_pipeline.sh`.
+For migration guidance, see `TRANSFERABILITY_PROMPT.md`.
 
-| Variable | Description | Example Value |
-| --- | --- | --- |
-| `PYTHON_EXEC` | Path to the specific Conda environment Python binary. | `~/anaconda3/envs/af3score/bin/python` |
-| `slurm_partition` | Target GPU partitions for job submission. | `gpu1,gpu2` |
-| `slurm_nodelist` | Specific nodes assigned for the computation. | `c06b14n[05-06],c06b19n[05-06]` |
+## Multi-directory Usage
 
-Run the pipeline:
 ```bash
-./AF3score_pipeline.sh <input_pdb_dir> <output_dir> <num_jobs>
-
+./AF3score_mutildir.sh /path/to/set1 /path/to/set2
 ```
 
-* **`<input_pdb_dir>`**: Path to the directory containing your input `.pdb` files.
-* **`<output_dir>`**: Target directory where AF3Score metrics and results will be saved.
-* **`<num_jobs>`**: The number of parallel jobs to launch.
+Override these if needed:
 
-### 2. Batch Processing
-
-For users handling multiple datasets across several directories, use the multi-directory wrapper `AF3score_mutildir.sh`.
-
+- `SCRIPT`
+- `NUM_JOBS`
+- `OUTPUT_PARENT_DIR`
+- `LOG_DIR`
 
 ## Output Metrics
 
-The pipeline generates the following scoring metrics:
+The pipeline extracts:
 
-| Metric | Level | Description |
-| --- | --- | --- |
-| **pTM** | Global / Per-chain | **Predicted TM-score:** Measures the overall topological accuracy of the global structure. |
-| **ipTM** | Global / Inter-chain | **Interface pTM:** Assesses the accuracy of the interfaces between different protein chains. |
-| **pLDDT** | Per-residue / Per-chain | **Predicted Local Distance Difference Test:** A per-residue confidence score (0-100). Higher values indicate higher local structure stability. |
-| **PAE** | Per-chain | **Predicted Aligned Error:** The expected distance error (in Å) between pairs of residues. Lower values indicate higher confidence in relative positioning. |
-| **ipSAE** | Inter-chain | **interaction prediction Score from Aligned Errors:** Specifically focuses on the binding interface of two chains. |
-
-Global level metrics are evaluates the quality of the overall structure. Per-chain metrics are focused on the quality of individual chains. Inter-chain metrics are designed to assess the quality of the docking between two chains.
+- `pTM`
+- `ipTM`
+- `pLDDT`
+- `PAE`
+- `ipSAE`
 
 ## Reference
 
-For more information about AlphaFold3, please visit their [GitHub Repository](https://github.com/google-deepmind/alphafold3)
+For AlphaFold3 itself, see:
+https://github.com/google-deepmind/alphafold3
