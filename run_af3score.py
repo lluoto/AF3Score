@@ -688,7 +688,10 @@ def main(_):
 
   if _RUN_INFERENCE.value:
     # Fail early on incompatible devices, but only if we're running inference.
-    gpu_devices = jax.local_devices(backend='gpu')
+    try:
+        gpu_devices = jax.local_devices(backend='gpu')
+    except Exception:
+        gpu_devices = []
     if gpu_devices and float(gpu_devices[0].compute_capability) < 8.0:
       raise ValueError(
           'There are currently known unresolved numerical issues with using'
@@ -736,7 +739,10 @@ def main(_):
     data_pipeline_config = None
 
   if _RUN_INFERENCE.value:
-    devices = jax.local_devices(backend='gpu')
+    try:
+        devices = jax.local_devices(backend='gpu')
+    except Exception:
+        devices = []
     print(f'Found local devices: {devices}')
 
     # Key modification: create ModelRunner only once, and it uses global model manager
@@ -750,7 +756,7 @@ def main(_):
                 attention.Implementation, _FLASH_ATTENTION_IMPLEMENTATION.value
             )
         ),
-        device=devices[0],
+        device=jax.devices('cpu')[0] if not devices else devices[0],
         model_dir=pathlib.Path(MODEL_DIR.value),
     )
     
